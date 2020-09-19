@@ -2,3 +2,4 @@
 go.sum
 
 mailchimp-subscribe-go
+vendor

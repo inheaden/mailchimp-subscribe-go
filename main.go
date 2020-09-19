@@ -2,21 +2,27 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"regexp"
 
+	"github.com/apex/log"
 	"github.com/golang/gddo/httputil/header"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 )
 
-type config struct {
-	APIKey   string `required:"true" split_words:"true"`
-	Audience string `required:"true" split_words:"true"`
+// Config
+type Config struct {
+	APIKey      string `required:"true" split_words:"true"`
+	ListID      string `required:"true" split_words:"true"`
+	APIServer   string `required:"true" split_words:"true"`
+	StatusIfNew string `split_words:"true" default:"pending"`
+	Port        string `default:"3000"`
 }
 
-type server struct{}
+type server struct {
+	config Config
+}
 
 type addSubscriberRequest struct {
 	Email string
@@ -33,6 +39,21 @@ func isEmailValid(e string) bool {
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/json")
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method == "GET" {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message": "UP"}`))
+
+		return
+	}
 
 	if r.Header.Get("Content-Type") != "" {
 		value, _ := header.ParseValueAndParams(r.Header, "Content-Type")
@@ -43,7 +64,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	api := NewMcAPI()
+	api := NewMcAPI(s.config)
 
 	switch r.Method {
 	case "POST":
@@ -77,24 +98,24 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	if err := loadFromEnvFile(); err != nil {
-		log.Fatalln(err)
-	}
+	loadFromEnvFile()
 
-	var config config
+	var config Config
 	if err := envconfig.Process("", &config); err != nil {
-		log.Fatalln(err)
+		log.WithError(err).Fatal("Error")
 	}
 
-	s := &server{}
+	s := &server{config: config}
 	http.Handle("/", s)
-	log.Fatal(http.ListenAndServe(":8081", nil))
+	log.Infof("Listening on port %s", config.Port)
+	if err := http.ListenAndServe(":"+config.Port, nil); err != nil {
+		log.WithError(err).Fatal("Error")
+	}
 }
 
-func loadFromEnvFile() error {
+func loadFromEnvFile() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Warn("Error loading .env file")
 	}
-	return err
 }
